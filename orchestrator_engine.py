@@ -12,9 +12,12 @@ What's new vs v2:
 
 import asyncio
 import json
+import logging
 import os
 from pathlib import Path
 from typing import Callable, Awaitable
+
+log = logging.getLogger(__name__)
 
 from dotenv import load_dotenv
 load_dotenv()
