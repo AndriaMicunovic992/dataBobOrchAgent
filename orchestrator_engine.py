@@ -463,6 +463,40 @@ async def execute_task_group_loop(
             await status_cb(f"{newly_ready} tasks unblocked for next wave")
 
 
+# ── Merge subagent outputs into main workspace ──────────────────────────────
+
+def merge_subagent_outputs(project: Project) -> list[str]:
+    """Copy files written by parallel agents (in subdirectories) into the main workspace.
+    Returns list of files merged."""
+    import shutil
+    ws = project.workspace
+    merged = []
+    skip_dirs = {".git", "__pycache__", "node_modules", ".venv", "venv"}
+
+    for entry in ws.iterdir():
+        # Only process agent subdirectories (not regular repo files)
+        if not entry.is_dir():
+            continue
+        if entry.name in skip_dirs:
+            continue
+        if not entry.name.startswith(("backend-", "frontend-", "data-", "test-", "review-", "agent-")):
+            continue
+
+        # Copy all files from agent subdir into main workspace
+        for src_file in entry.rglob("*"):
+            if src_file.is_file() and ".git" not in src_file.parts:
+                rel = src_file.relative_to(entry)
+                dest = ws / rel
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(str(src_file), str(dest))
+                merged.append(str(rel))
+
+        # Clean up the agent subdirectory
+        shutil.rmtree(str(entry), ignore_errors=True)
+
+    return merged
+
+
 # ── Review agent ─────────────────────────────────────────────────────────────
 
 REVIEW_AGENT_SYSTEM = """You are an expert code review agent. Your job is to review the outputs of multiple parallel coding agents and check for:
@@ -780,8 +814,10 @@ Do NOT skip phases. Do NOT start coding before planning.
 
 **PHASE 1: ANALYSE** (understand before acting)
 - Read the project context injected above
+- If the project has a github_repo set, call git_pull first to sync latest code
 - If the workspace has existing code, use read_workspace_file and list_workspace to examine it
 - If the workspace is empty (new project), that is NORMAL — skip file reading and proceed
+- If the repo hasn't been cloned yet, call git_init with the repo URL first
 - Identify what already exists, what needs to change, what is new
 - Summarise your understanding to the user in 2-3 sentences
 
@@ -818,6 +854,7 @@ Do NOT skip phases. Do NOT start coding before planning.
 === RULES ===
 - ALWAYS read project context at the top of this prompt before acting
 - ALWAYS follow the five phases — never skip straight to coding
+- ALWAYS call git_init (if repo not cloned) or git_pull (if already cloned) before making changes to an existing repo
 - PREFER parallel execution for independent tasks
 - Use spawn_data_agent for ALL DAX/SQL work — never give data tasks to coding agents
 - After completing a feature, always git_commit_push
@@ -826,6 +863,7 @@ Do NOT skip phases. Do NOT start coding before planning.
 - Mention file paths and commit hashes in summaries
 - For small questions or clarifications, respond directly without the full workflow
 - You still have spawn_coding_agent and spawn_parallel_agents for simple ad-hoc tasks
+- spawn_coding_agent works in the main workspace — agents can read/modify existing repo files directly
 """
 
 def build_system_prompt(project: Project | None) -> str:
@@ -851,9 +889,11 @@ async def handle_tool(
         label   = inputs.get("label", "agent")
         task_id = project.add_task(inputs["task"][:80])
         project.update_task(task_id, "running")
+        # Single agents work directly in the main workspace (where the cloned repo lives)
+        # so they can read and modify existing files
         result  = await run_sdk_subagent(
             task=inputs["task"], context=inputs.get("context", ""),
-            workspace=ws / label, cheap=inputs.get("cheap", False),
+            workspace=ws, cheap=inputs.get("cheap", False),
             label=label, status_cb=status_cb, project=project,
         )
         project.update_task(task_id, "done", result[:500])
@@ -861,6 +901,10 @@ async def handle_tool(
 
     elif name == "spawn_parallel_agents":
         results = await run_parallel_agents(inputs["tasks"], project, status_cb)
+        # Merge outputs from agent subdirectories into main workspace
+        merged = merge_subagent_outputs(project)
+        if merged and status_cb:
+            await status_cb(f"Merged {len(merged)} files from parallel agents into workspace")
         return "\n\n---\n\n".join(f"*[{r['label']}]*\n{r['result']}" for r in results)
 
     elif name == "spawn_data_agent":
@@ -871,9 +915,10 @@ async def handle_tool(
         full_context = f"Query type: {qtype}\nTarget: {target}\n{context}"
         task_id = project.add_task(f"[DATA] {inputs['task'][:70]}")
         project.update_task(task_id, "running")
+        # Data agents also work in main workspace to access existing files
         result = await run_data_agent(
             task=inputs["task"], context=full_context,
-            workspace=ws / label, label=label, status_cb=status_cb,
+            workspace=ws, label=label, status_cb=status_cb,
         )
         project.update_task(task_id, "done", result[:500])
         return result
@@ -882,8 +927,9 @@ async def handle_tool(
         label   = inputs.get("label", "cc-agent")
         task_id = project.add_task(inputs["task"][:80])
         project.update_task(task_id, "running")
+        # Claude Code agent works in main workspace
         result = await run_claude_code_subagent(
-            task=inputs["task"], working_dir=ws / label,
+            task=inputs["task"], working_dir=ws,
             label=label, status_cb=status_cb,
         )
         project.update_task(task_id, "done", result[:500])
@@ -927,7 +973,12 @@ async def handle_tool(
         return "\n".join(lines)
 
     elif name == "execute_task_group":
-        return await execute_task_group_loop(inputs["group_id"], project, status_cb)
+        result = await execute_task_group_loop(inputs["group_id"], project, status_cb)
+        # Merge subagent output subdirectories into main workspace
+        merged = merge_subagent_outputs(project)
+        if merged and status_cb:
+            await status_cb(f"Merged {len(merged)} files from agent subdirs into workspace")
+        return result
 
     elif name == "review_results":
         return await run_review_agent(
@@ -955,9 +1006,16 @@ async def handle_tool(
         return result
 
     elif name == "git_commit_push":
+        # Merge any remaining subagent outputs before committing
+        merged = merge_subagent_outputs(project)
+        if merged and status_cb:
+            await status_cb(f"Merged {len(merged)} files before commit")
         return await git_tools.git_commit_push(
             ws, inputs["message"], inputs.get("branch", "main")
         )
+
+    elif name == "git_pull":
+        return await git_tools.git_pull(ws, inputs.get("branch", "main"))
 
     elif name == "git_status":
         return await git_tools.git_status(ws)

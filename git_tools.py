@@ -80,59 +80,147 @@ async def _git_subprocess(args: list[str], cwd: Path) -> tuple[int, str, str]:
 
 # ── Public API ────────────────────────────────────────────────────────────────
 async def git_init(workspace: Path, repo_url: str, branch: str = "main") -> str:
-    """Initialise a git repo in workspace and connect it to GitHub."""
+    """Clone an existing GitHub repo into workspace, or connect if already cloned."""
     workspace.mkdir(parents=True, exist_ok=True)
     err = _check_git_available()
     if err:
         return f"ERROR: {err}"
 
     authed_url = _inject_token(repo_url)
+    git_dir = workspace / ".git"
 
     if HAS_GITPYTHON:
         def _do():
-            git_dir = workspace / ".git"
             if git_dir.exists():
+                # Already have a repo — update remote URL and pull latest
                 repo = gitpython.Repo(str(workspace))
+                if "origin" in [r.name for r in repo.remotes]:
+                    repo.remote("origin").set_url(authed_url)
+                else:
+                    repo.create_remote("origin", authed_url)
+                with repo.config_writer() as cfg:
+                    cfg.set_value("user", "email", "orchestrator@agent.local")
+                    cfg.set_value("user", "name",  "AI Orchestrator")
+                # Pull latest changes
+                try:
+                    repo.remote("origin").fetch()
+                    if branch in [ref.name.split("/")[-1] for ref in repo.remote("origin").refs]:
+                        repo.git.reset("--mixed", f"origin/{branch}")
+                except Exception as pull_err:
+                    return f"OK: repo connected (pull skipped: {pull_err}) → {repo_url}"
+                return f"OK: git repo synced → {repo_url}"
             else:
-                repo = gitpython.Repo.init(str(workspace), initial_branch=branch)
+                # Clone the repo into workspace
+                # gitpython clone_from needs an empty or non-existent dir,
+                # but workspace may have files. Use a temp clone then move.
+                import shutil
+                import tempfile
+                tmp_dir = Path(tempfile.mkdtemp())
+                try:
+                    repo = gitpython.Repo.clone_from(
+                        authed_url, str(tmp_dir), branch=branch,
+                    )
+                    # Move .git and all repo files into workspace
+                    for item in tmp_dir.iterdir():
+                        dest = workspace / item.name
+                        if dest.exists():
+                            if dest.is_dir():
+                                shutil.rmtree(str(dest))
+                            else:
+                                dest.unlink()
+                        shutil.move(str(item), str(dest))
+                finally:
+                    if tmp_dir.exists():
+                        shutil.rmtree(str(tmp_dir), ignore_errors=True)
 
-            # Set remote
-            if "origin" in [r.name for r in repo.remotes]:
-                repo.remote("origin").set_url(authed_url)
-            else:
-                repo.create_remote("origin", authed_url)
-
-            with repo.config_writer() as cfg:
-                cfg.set_value("user", "email", "orchestrator@agent.local")
-                cfg.set_value("user", "name",  "AI Orchestrator")
-
-            return f"OK: git repo ready → {repo_url}"
+                repo = gitpython.Repo(str(workspace))
+                with repo.config_writer() as cfg:
+                    cfg.set_value("user", "email", "orchestrator@agent.local")
+                    cfg.set_value("user", "name",  "AI Orchestrator")
+                file_count = len(list(workspace.rglob("*")))
+                return f"OK: cloned {repo_url} ({file_count} files) → workspace"
 
         try:
             return await _run_in_thread(_do)
         except Exception as e:
-            return f"ERROR git init: {e}"
+            return f"ERROR git init/clone: {e}"
 
     else:
-        # Subprocess fallback
-        git_dir = workspace / ".git"
+        # Subprocess fallback — use git clone
         if not git_dir.exists():
-            rc, _, err = await _git_subprocess(["init", "-b", branch], workspace)
+            # Clone into workspace (need empty dir for clone)
+            import shutil
+            import tempfile
+            tmp_dir = Path(tempfile.mkdtemp())
+            rc, out, clone_err = await _git_subprocess(
+                ["clone", "--branch", branch, authed_url, str(tmp_dir)], workspace.parent,
+            )
             if rc != 0:
-                # Older git doesn't support -b, try without
-                rc, _, err2 = await _git_subprocess(["init"], workspace)
-                if rc != 0:
-                    return f"ERROR git init: {err2}"
-
-        rc, out, _ = await _git_subprocess(["remote", "get-url", "origin"], workspace)
-        if rc != 0:
-            await _git_subprocess(["remote", "add", "origin", authed_url], workspace)
+                # Maybe branch doesn't exist yet, try without --branch
+                rc, out, clone_err = await _git_subprocess(
+                    ["clone", authed_url, str(tmp_dir)], workspace.parent,
+                )
+            if rc == 0:
+                # Move cloned content into workspace
+                for item in tmp_dir.iterdir():
+                    dest = workspace / item.name
+                    if dest.exists():
+                        if dest.is_dir():
+                            shutil.rmtree(str(dest))
+                        else:
+                            dest.unlink()
+                    shutil.move(str(item), str(dest))
+                shutil.rmtree(str(tmp_dir), ignore_errors=True)
+            else:
+                shutil.rmtree(str(tmp_dir), ignore_errors=True)
+                # Fall back to init + remote add for empty repos
+                rc2, _, err2 = await _git_subprocess(["init", "-b", branch], workspace)
+                if rc2 != 0:
+                    await _git_subprocess(["init"], workspace)
+                await _git_subprocess(["remote", "add", "origin", authed_url], workspace)
         else:
+            # Already cloned — update remote and pull
             await _git_subprocess(["remote", "set-url", "origin", authed_url], workspace)
+            await _git_subprocess(["fetch", "origin"], workspace)
+            await _git_subprocess(["reset", "--mixed", f"origin/{branch}"], workspace)
 
         await _git_subprocess(["config", "user.email", "orchestrator@agent.local"], workspace)
         await _git_subprocess(["config", "user.name",  "AI Orchestrator"], workspace)
         return f"OK: git repo ready → {repo_url}"
+
+
+async def git_pull(workspace: Path, branch: str = "main") -> str:
+    """Pull latest changes from GitHub before starting work."""
+    err = _check_git_available()
+    if err:
+        return f"ERROR: {err}"
+    if not (workspace / ".git").exists():
+        return "ERROR: No git repo. Run git_init first."
+
+    if HAS_GITPYTHON:
+        def _do():
+            repo = gitpython.Repo(str(workspace))
+            # Ensure token is injected in remote URL
+            if GITHUB_TOKEN and "origin" in [r.name for r in repo.remotes]:
+                current_url = repo.remote("origin").url
+                if "github.com" in current_url and "@" not in current_url:
+                    repo.remote("origin").set_url(_inject_token(current_url))
+            repo.remote("origin").fetch()
+            # Reset working tree to match remote (keeps untracked files)
+            repo.git.reset("--mixed", f"origin/{branch}")
+            repo.git.checkout("--", ".")
+            return f"OK: pulled latest from origin/{branch}"
+        try:
+            return await _run_in_thread(_do)
+        except Exception as e:
+            return f"ERROR git pull: {e}"
+    else:
+        await _git_subprocess(["fetch", "origin"], workspace)
+        rc, out, err = await _git_subprocess(["reset", "--mixed", f"origin/{branch}"], workspace)
+        if rc != 0:
+            return f"ERROR git pull: {err}"
+        await _git_subprocess(["checkout", "--", "."], workspace)
+        return f"OK: pulled latest from origin/{branch}"
 
 
 async def git_status(workspace: Path) -> str:
@@ -355,7 +443,11 @@ GIT_TOOLS = [
     },
     {
         "name": "git_init",
-        "description": "Initialise the git repo and connect it to a GitHub remote URL.",
+        "description": (
+            "Clone a GitHub repo into the workspace (or sync if already cloned). "
+            "This MUST be called before any coding work on an existing repo. "
+            "It downloads all existing files so agents can read and modify them."
+        ),
         "input_schema": {
             "type": "object",
             "properties": {
@@ -363,6 +455,16 @@ GIT_TOOLS = [
                 "branch":   {"type": "string", "description": "Default branch (default: main)"},
             },
             "required": ["repo_url"],
+        },
+    },
+    {
+        "name": "git_pull",
+        "description": "Pull latest changes from GitHub before starting work. Use at the start of each session.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "branch": {"type": "string", "description": "Branch to pull (default: main)"},
+            },
         },
     },
     {
