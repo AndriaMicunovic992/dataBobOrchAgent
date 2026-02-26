@@ -1,0 +1,11 @@
+{
+  "name": "dataBobCFOdemoLight",
+  "description": "FINANCE Scenario Agent \u2014 AI-powered tool that reads Power BI budget data via DAX, calculates scenario adjustments, and generates SQL INSERT scripts for financial scenario modeling. Built for Hans Kohler AG (company_id=4).",
+  "github_repo": "https://github.com/AndriaMicunovic992/dataBobCFOdemoLight.git",
+  "updated": "2026-02-26T02:18:30.806765",
+  "backend": "Python Flask (server.py), Anthropic Claude API",
+  "frontend": "Single-page HTML UI (ui.html)",
+  "data_layer": "Power BI Desktop (DAX queries via MCP), SQLite cache",
+  "database": "Power BI semantic model (Fakten Hauptbuch), SQLite for caching",
+  "conventions": "Python 3.11+, async/await with asyncio, Flask HTTP API, MCP protocol for Power BI connection"
+}

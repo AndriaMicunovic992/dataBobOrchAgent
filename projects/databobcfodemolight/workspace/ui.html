@@ -1,0 +1,1613 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>dataBobCFO — Scenario Planning</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:        #f0f4f8;
+    --surface:   #ffffff;
+    --surface2:  #f7f9fb;
+    --border:    #e2eaf0;
+    --border2:   #c8d8e4;
+    --text:      #1a2e3d;
+    --text2:     #4a6374;
+    --muted:     #8ca4b4;
+    --accent:    #6abbd9;
+    --accent-dk: #4a9cbf;
+    --accent-lt: #eaf5fb;
+    --accent-xl: #f3fafd;
+    --header-bg: #152636;
+    --header2:   #1d3248;
+    --green:     #27a882;
+    --green-lt:  #e6f7f2;
+    --amber:     #d4890e;
+    --amber-lt:  #fef3e2;
+    --amber-bd:  rgba(212,137,14,0.22);
+    --red:       #d04060;
+    --red-lt:    #fdedf1;
+    --user-bg:   #eaf5fb;
+    --shadow-xs: 0 1px 3px rgba(20,45,65,0.07);
+    --shadow-sm: 0 2px 8px rgba(20,45,65,0.09), 0 1px 2px rgba(20,45,65,0.05);
+    --shadow:    0 6px 24px rgba(20,45,65,0.12), 0 2px 6px rgba(20,45,65,0.06);
+    --shadow-lg: 0 24px 56px rgba(20,45,65,0.20), 0 6px 18px rgba(20,45,65,0.10);
+    --r:  8px;
+    --rs: 6px;
+    --sidebar-w: 288px;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    height: 100vh;
+    display: grid;
+    grid-template-rows: 56px 1fr;
+    grid-template-columns: 1fr var(--sidebar-w);
+    grid-template-areas:
+      "header header"
+      "main   sidebar";
+    overflow: hidden;
+  }
+
+  /* ══════════════════════════════════════
+     HEADER
+  ══════════════════════════════════════ */
+  header {
+    grid-area: header;
+    background: linear-gradient(90deg, var(--header-bg) 0%, var(--header2) 100%);
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    gap: 16px;
+    box-shadow: 0 1px 0 rgba(0,0,0,0.3), 0 3px 10px rgba(0,0,0,0.18);
+    position: relative;
+    z-index: 10;
+  }
+
+  .brand { display: flex; align-items: center; gap: 11px; flex-shrink: 0; }
+  .brand-icon {
+    width: 30px; height: 30px;
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dk) 100%);
+    border-radius: 7px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 700; color: #fff;
+    letter-spacing: -0.05em;
+    box-shadow: 0 2px 8px rgba(106,187,217,0.45);
+    flex-shrink: 0;
+  }
+  .brand-text { display: flex; flex-direction: column; gap: 1px; }
+  .brand-name {
+    font-size: 15px; font-weight: 700; letter-spacing: -0.03em;
+    color: #fff; line-height: 1;
+  }
+  .brand-name em { font-style: normal; color: var(--accent); }
+  .brand-sub {
+    font-size: 9.5px; font-weight: 500; color: rgba(255,255,255,0.32);
+    letter-spacing: 0.08em; text-transform: uppercase; line-height: 1;
+  }
+
+  .h-sep { width: 1px; height: 26px; background: rgba(255,255,255,0.09); flex-shrink: 0; }
+
+  .status-pill {
+    display: flex; align-items: center; gap: 7px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.09);
+    border-radius: 20px;
+    padding: 5px 13px 5px 9px;
+    font-size: 11px; color: rgba(255,255,255,0.45);
+  }
+  .dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: rgba(255,255,255,0.18);
+    transition: background 0.3s, box-shadow 0.3s;
+    flex-shrink: 0;
+  }
+  .dot.connected { background: var(--green); box-shadow: 0 0 0 3px rgba(39,168,130,0.28); }
+  .dot.error     { background: var(--red);   box-shadow: 0 0 0 3px rgba(208,64,96,0.28); }
+  #status-text   { color: rgba(255,255,255,0.50); }
+
+  .header-actions { margin-left: auto; display: flex; gap: 7px; align-items: center; }
+  .h-btn {
+    padding: 6px 14px;
+    border-radius: var(--rs);
+    border: 1px solid rgba(255,255,255,0.13);
+    background: rgba(255,255,255,0.07);
+    color: rgba(255,255,255,0.65);
+    font-family: 'Inter', sans-serif;
+    font-size: 12px; font-weight: 500;
+    cursor: pointer; transition: all 0.15s; white-space: nowrap;
+    letter-spacing: -0.01em;
+  }
+  .h-btn:hover  { background: rgba(255,255,255,0.13); color: #fff; border-color: rgba(255,255,255,0.20); }
+  .h-btn.accent { background: var(--accent); border-color: transparent; color: #fff;
+                  box-shadow: 0 2px 8px rgba(106,187,217,0.38); }
+  .h-btn.accent:hover { background: var(--accent-dk); box-shadow: 0 3px 12px rgba(106,187,217,0.48); }
+  .h-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+
+  /* ══════════════════════════════════════
+     MAIN CHAT
+  ══════════════════════════════════════ */
+  main {
+    grid-area: main;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--bg);
+  }
+
+  #messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 22px 30px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    scroll-behavior: smooth;
+  }
+  #messages::-webkit-scrollbar { width: 5px; }
+  #messages::-webkit-scrollbar-track { background: transparent; }
+  #messages::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+
+  .msg {
+    display: flex; flex-direction: column;
+    padding: 12px 15px;
+    border-radius: var(--r);
+    line-height: 1.65;
+    animation: fadeIn 0.20s ease;
+  }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
+
+  .msg-user {
+    background: var(--user-bg);
+    border: 1px solid rgba(106,187,217,0.22);
+    border-right: 3px solid var(--accent);
+    align-self: flex-end;
+    max-width: 74%;
+    margin-top: 10px;
+    box-shadow: var(--shadow-xs);
+  }
+  .msg-agent {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--border2);
+    align-self: flex-start;
+    max-width: 88%;
+    margin-bottom: 10px;
+    box-shadow: var(--shadow-sm);
+  }
+  .msg-agent.has-sql { border-left-color: var(--green); }
+  .msg-system {
+    background: transparent; border: none;
+    color: var(--muted); font-size: 11px;
+    align-self: center; padding: 3px 0;
+    text-align: center; font-style: italic;
+  }
+  .msg-label {
+    font-size: 9.5px; font-weight: 700; letter-spacing: 0.09em;
+    color: var(--muted); margin-bottom: 5px; text-transform: uppercase;
+  }
+  .msg-user  .msg-label { color: var(--accent-dk); }
+  .msg-agent.has-sql .msg-label { color: var(--green); }
+  .msg-text {
+    white-space: pre-wrap; word-break: break-word;
+    color: var(--text); font-size: 13px; line-height: 1.72;
+  }
+  .sql-badge {
+    display: inline-flex; align-items: center; gap: 7px;
+    margin-top: 10px; padding: 5px 13px;
+    background: var(--green-lt);
+    border: 1px solid rgba(39,168,130,0.22);
+    border-radius: 20px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10.5px; font-weight: 500; color: var(--green);
+    cursor: pointer; transition: all 0.15s; align-self: flex-start;
+  }
+  .sql-badge:hover { background: rgba(39,168,130,0.13); border-color: var(--green); }
+
+  .thinking {
+    display: flex; align-items: center; gap: 10px;
+    color: var(--muted); font-size: 12px;
+    padding: 11px 15px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: var(--r); align-self: flex-start;
+    box-shadow: var(--shadow-sm);
+  }
+  .dots span {
+    display: inline-block;
+    width: 5px; height: 5px;
+    background: var(--accent); border-radius: 50%;
+    margin: 0 2px;
+    animation: pulse 1.3s infinite;
+  }
+  .dots span:nth-child(2) { animation-delay: 0.2s; }
+  .dots span:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes pulse {
+    0%, 80%, 100% { opacity: 0.2; transform: scale(0.72); }
+    40%           { opacity: 1;   transform: scale(1); }
+  }
+
+  .input-area {
+    padding: 12px 24px 14px;
+    background: var(--surface);
+    display: flex; gap: 9px; align-items: flex-end;
+    border-top: 1px solid var(--border);
+    box-shadow: 0 -2px 12px rgba(20,45,65,0.05);
+  }
+  #input {
+    flex: 1;
+    background: var(--bg);
+    border: 1.5px solid var(--border);
+    border-radius: var(--r);
+    color: var(--text); font-family: 'Inter', sans-serif;
+    font-size: 13px; padding: 9px 13px;
+    resize: none; min-height: 40px; max-height: 120px;
+    outline: none; transition: border-color 0.15s, box-shadow 0.15s;
+    line-height: 1.55;
+  }
+  #input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(106,187,217,0.13); }
+  #input::placeholder { color: var(--muted); }
+  #send {
+    padding: 9px 20px; height: 40px;
+    background: var(--accent); border: none;
+    border-radius: var(--r); color: #fff;
+    font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 600;
+    cursor: pointer; transition: background 0.15s, box-shadow 0.15s;
+    white-space: nowrap; box-shadow: 0 2px 8px rgba(106,187,217,0.28);
+    letter-spacing: -0.01em;
+  }
+  #send:hover { background: var(--accent-dk); box-shadow: 0 4px 14px rgba(106,187,217,0.40); }
+
+
+  /* ══════════════════════════════════════
+     SIDEBAR  —  key layout rule:
+     3 fixed-height zones + 1 flex zone (builder)
+  ══════════════════════════════════════ */
+  aside {
+    grid-area: sidebar;
+    background: var(--surface);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border-left: 1px solid var(--border);
+  }
+
+  /* ─── zone header (shared) ─── */
+  .zone-hd {
+    flex: 0 0 auto;
+    padding: 11px 14px 9px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+  .zone-title {
+    font-size: 9.5px; font-weight: 700;
+    letter-spacing: 0.10em; color: var(--muted);
+    text-transform: uppercase; line-height: 1; flex: 1;
+  }
+  .zone-bd { border-bottom: 1px solid var(--border); }
+
+  /* ─── ZONE 1: Quick Actions (fixed, scrollable internally) ─── */
+  .zone-quick {
+    flex: 0 0 auto;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    max-height: 210px;    /* cap so builder always gets space */
+    overflow: hidden;
+  }
+  .quick-scroll {
+    overflow-y: auto;
+    padding: 4px 10px 10px;
+  }
+  .quick-scroll::-webkit-scrollbar { width: 3px; }
+  .quick-scroll::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+  .quick-btn {
+    width: 100%;
+    text-align: left;
+    padding: 7px 9px;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--rs);
+    color: var(--text2);
+    font-size: 12px; font-weight: 500;
+    cursor: pointer; transition: all 0.12s;
+    font-family: 'Inter', sans-serif;
+    display: block;
+    margin-bottom: 2px;
+  }
+  .quick-btn:hover {
+    background: var(--accent-lt);
+    border-color: rgba(106,187,217,0.24);
+    color: var(--accent-dk);
+  }
+  .quick-btn .qb-sub {
+    font-size: 10px; color: var(--muted);
+    margin-top: 1px; font-weight: 400; display: block;
+    transition: color 0.12s;
+  }
+  .quick-btn:hover .qb-sub { color: var(--accent-dk); opacity: 0.7; }
+
+  /* ─── ZONE 2: Scenario Builder (FLEX — takes remaining space) ─── */
+  .zone-builder {
+    flex: 1 1 0;           /* fills all remaining height */
+    min-height: 100px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--surface2);
+  }
+
+  /* pill badge next to builder title */
+  .builder-badge {
+    font-size: 9.5px; font-weight: 700;
+    color: var(--amber);
+    background: var(--amber-lt);
+    border: 1px solid var(--amber-bd);
+    padding: 1px 7px; border-radius: 10px;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+
+  /* scrollable staged-items area inside builder */
+  .staged-scroll {
+    flex: 1 1 0;
+    overflow-y: auto;
+    padding: 6px 10px;
+    min-height: 0;         /* critical for flex child scrolling */
+  }
+  .staged-scroll::-webkit-scrollbar { width: 3px; }
+  .staged-scroll::-webkit-scrollbar-thumb { background: var(--amber-bd); border-radius: 2px; }
+
+  .no-staged {
+    font-size: 11.5px; color: var(--muted);
+    text-align: center; padding: 20px 6px; line-height: 1.8;
+    font-style: italic;
+  }
+
+  .staged-item {
+    position: relative;
+    background: var(--surface);
+    border: 1px solid var(--amber-bd);
+    border-left: 3px solid var(--amber);
+    border-radius: var(--rs);
+    padding: 9px 30px 10px 11px;  /* right padding leaves room for ✕ button */
+    margin-bottom: 6px;
+    box-shadow: var(--shadow-xs);
+    transition: box-shadow 0.15s;
+  }
+  .staged-item:last-child { margin-bottom: 0; }
+  .staged-item:hover { box-shadow: var(--shadow-sm); }
+
+  .staged-remove {
+    position: absolute;
+    top: 7px; right: 7px;
+    width: 20px; height: 20px;
+    border-radius: 4px;
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    font-size: 11px; line-height: 1;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.12s, color 0.12s;
+    font-family: 'Inter', sans-serif;
+    padding: 0;
+  }
+  .staged-remove:hover { background: var(--red-lt); color: var(--red); }
+
+  .staged-step-row {
+    display: flex; align-items: center; gap: 7px; margin-bottom: 5px;
+  }
+  .staged-step {
+    font-size: 8.5px; font-weight: 700;
+    letter-spacing: 0.10em; color: var(--amber);
+    text-transform: uppercase; background: var(--amber-lt);
+    padding: 1px 6px; border-radius: 4px;
+    border: 1px solid var(--amber-bd);
+  }
+  .staged-desc {
+    font-size: 12px; color: var(--text);
+    line-height: 1.45; font-weight: 500; margin-bottom: 6px;
+  }
+  .staged-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+  .staged-tag {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 9.5px; color: var(--text2);
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 4px; padding: 1px 6px;
+  }
+  .staged-tag.pos { color: var(--green); border-color: rgba(39,168,130,0.25); background: var(--green-lt); }
+  .staged-tag.neg { color: var(--red);   border-color: rgba(208,64,96,0.22);   background: var(--red-lt); }
+
+  /* controls below the scroll area */
+  .staged-footer {
+    flex: 0 0 auto;
+    padding: 8px 10px 10px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    background: var(--surface);
+  }
+  .staged-meta {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 9.5px; color: var(--muted);
+    text-align: right;
+  }
+  .scenario-name-input {
+    width: 100%;
+    background: var(--bg);
+    border: 1.5px solid var(--border);
+    border-radius: var(--rs);
+    color: var(--text); font-family: 'Inter', sans-serif;
+    font-size: 12.5px; padding: 7px 10px;
+    outline: none; transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  .scenario-name-input:focus {
+    border-color: var(--amber);
+    box-shadow: 0 0 0 3px rgba(212,137,14,0.12);
+  }
+  .scenario-name-input::placeholder { color: var(--muted); }
+  .staged-btn-row { display: flex; gap: 6px; }
+
+  /* ─── ZONE 3: Stats (fixed) ─── */
+  .zone-stats {
+    flex: 0 0 auto;
+    border-bottom: 1px solid var(--border);
+    padding: 0 10px 10px;
+  }
+  .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .stat {
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: var(--rs); padding: 9px 11px;
+  }
+  .stat-val {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 20px; font-weight: 500;
+    color: var(--accent); letter-spacing: -0.04em; line-height: 1;
+  }
+  .stat-lbl { font-size: 9.5px; color: var(--muted); margin-top: 3px; font-weight: 500; letter-spacing: 0.04em; }
+
+  /* ─── ZONE 4: Generated Files (fixed height, internal scroll) ─── */
+  .zone-files {
+    flex: 0 0 160px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .file-scroll {
+    flex: 1 1 0; overflow-y: auto;
+    padding: 4px 10px 10px;
+    min-height: 0;
+  }
+  .file-scroll::-webkit-scrollbar { width: 3px; }
+  .file-scroll::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+  .file-item {
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--rs);
+    margin-bottom: 4px;
+    cursor: pointer;
+    transition: all 0.12s;
+    background: var(--surface2);
+    display: flex; gap: 8px; align-items: flex-start;
+  }
+  .file-item:hover { border-color: var(--green); background: var(--green-lt); }
+  .file-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); flex-shrink: 0; margin-top: 3px; }
+  .file-info { flex: 1; min-width: 0; }
+  .file-name {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 9.5px; color: var(--green); font-weight: 500;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .file-meta { font-size: 9.5px; color: var(--muted); margin-top: 2px; }
+  .no-files { font-size: 11px; color: var(--muted); text-align: center; padding: 20px 0; font-style: italic; }
+
+  /* ─── Generic sidebar buttons ─── */
+  .s-btn {
+    padding: 7px 12px;
+    border-radius: var(--rs);
+    border: 1px solid var(--border2);
+    background: var(--surface);
+    color: var(--text2);
+    font-family: 'Inter', sans-serif;
+    font-size: 12px; font-weight: 500;
+    cursor: pointer; transition: all 0.15s; white-space: nowrap;
+    letter-spacing: -0.01em;
+  }
+  .s-btn:hover  { border-color: var(--accent); color: var(--accent-dk); background: var(--accent-lt); }
+  .s-btn.amber  { background: var(--amber); border-color: var(--amber); color: #fff; font-weight: 600; }
+  .s-btn.amber:hover  { background: #bb7a0b; border-color: #bb7a0b; }
+  .s-btn.ghost  { border-color: rgba(208,64,96,0.30); color: var(--red); background: transparent; }
+  .s-btn.ghost:hover  { background: var(--red-lt); border-color: var(--red); }
+  .s-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+
+  /* ══════════════════════════════════════
+     MODALS
+  ══════════════════════════════════════ */
+  .modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(15,28,42,0.55);
+    display: none; align-items: center; justify-content: center;
+    z-index: 100;
+    backdrop-filter: blur(5px);
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: var(--surface);
+    border-radius: 12px;
+    width: 860px; max-width: 95vw; max-height: 82vh;
+    display: flex; flex-direction: column;
+    box-shadow: var(--shadow-lg);
+    border: 1px solid var(--border);
+    animation: slideUp 0.20s ease;
+  }
+  @keyframes slideUp {
+    from { opacity: 0; transform: translateY(18px); }
+    to   { opacity: 1; transform: none; }
+  }
+  .modal-header {
+    display: flex; align-items: center;
+    padding: 15px 18px; border-bottom: 1px solid var(--border); gap: 9px;
+  }
+  .modal-title {
+    font-size: 13px; font-weight: 600; color: var(--text);
+    flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .modal-subtitle {
+    font-size: 12px; color: var(--muted); margin-bottom: 14px; line-height: 1.55;
+  }
+  .modal-body {
+    flex: 1; overflow: auto; padding: 18px 20px;
+  }
+  .modal-body.code-bg { background: #f5f8fa; border-radius: 0 0 12px 12px; }
+  .modal-body pre {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11.5px; color: var(--text); line-height: 1.80; white-space: pre;
+  }
+  .modal-body pre .kw { color: var(--accent-dk); font-weight: 500; }
+  .modal-body pre .cm { color: var(--muted); font-style: italic; }
+  .modal-body pre .st { color: var(--amber); }
+  .modal-body pre .nm { color: var(--green); }
+
+  .m-btn {
+    padding: 6px 13px;
+    border-radius: var(--rs);
+    border: 1px solid var(--border2);
+    background: var(--surface);
+    color: var(--text2);
+    font-family: 'Inter', sans-serif;
+    font-size: 12px; font-weight: 500;
+    cursor: pointer; transition: all 0.15s; white-space: nowrap;
+  }
+  .m-btn:hover { border-color: var(--accent); color: var(--accent-dk); background: var(--accent-lt); }
+  .m-btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .m-btn.primary:hover { background: var(--accent-dk); }
+  .m-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+  /* Model picker */
+  .model-list { display: flex; flex-direction: column; gap: 7px; margin-top: 4px; }
+  .model-item {
+    padding: 13px 15px;
+    background: var(--bg); border: 1.5px solid var(--border);
+    border-radius: var(--r); cursor: pointer; transition: all 0.14s;
+    display: flex; flex-direction: column; gap: 3px;
+  }
+  .model-item:hover { border-color: var(--accent); background: var(--accent-xl); }
+  .model-item.selected {
+    border-color: var(--accent); background: var(--accent-lt);
+    box-shadow: 0 0 0 3px rgba(106,187,217,0.14);
+  }
+  .model-name { font-size: 13px; font-weight: 600; color: var(--text); }
+  .model-meta { font-size: 11.5px; color: var(--text2); }
+  .model-db   { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--muted); }
+  .picker-empty {
+    text-align: center; padding: 28px 0;
+    color: var(--muted); font-size: 12.5px; line-height: 1.9;
+  }
+  .picker-actions {
+    display: flex; gap: 8px; justify-content: flex-end;
+    margin-top: 18px; padding-top: 14px;
+    border-top: 1px solid var(--border);
+  }
+
+  /* ══════════════════════════════════════
+     GL IMPACT PREVIEW MODAL
+  ══════════════════════════════════════ */
+  .preview-modal-inner {
+    width: min(1440px, 97vw);
+    max-height: 90vh;
+  }
+  .preview-hd-left {
+    flex: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0;
+  }
+  .preview-summary {
+    font-size: 11.5px; color: var(--text2); white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis;
+  }
+  .preview-summary .iv { font-weight: 700; }
+  .preview-summary .iv.pos { color: var(--green); }
+  .preview-summary .iv.neg { color: var(--red); }
+
+  /* View toggle (Δ Delta / Compare) */
+  .view-toggle {
+    display: flex; background: var(--bg);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 2px; gap: 2px; flex-shrink: 0;
+  }
+  .vt-btn {
+    padding: 4px 13px; border-radius: 4px; border: none;
+    background: transparent; color: var(--text2);
+    font-size: 11.5px; font-weight: 500;
+    cursor: pointer; transition: all 0.12s;
+    font-family: 'Inter', sans-serif; white-space: nowrap;
+  }
+  .vt-btn.active {
+    background: var(--surface); color: var(--text);
+    box-shadow: var(--shadow-xs);
+  }
+
+  /* Table wrapper — scrolls both axes */
+  .preview-body {
+    padding: 0; overflow: hidden;
+    display: flex; flex-direction: column;
+  }
+  .pt-wrap {
+    overflow: auto;
+    flex: 1;
+  }
+  .pt-wrap::-webkit-scrollbar { width: 6px; height: 6px; }
+  .pt-wrap::-webkit-scrollbar-track { background: var(--bg); }
+  .pt-wrap::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+
+  /* Table */
+  .pt {
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 11.5px;
+    white-space: nowrap;
+  }
+
+  /* ── Sticky header row ── */
+  .pt thead th {
+    position: sticky; top: 0; z-index: 2;
+    background: var(--bg);
+    padding: 9px 10px;
+    text-align: right;
+    font-size: 9.5px; font-weight: 700;
+    color: var(--muted); letter-spacing: 0.07em; text-transform: uppercase;
+    border-bottom: 2px solid var(--border2);
+    border-right: 1px solid var(--border);
+  }
+  .pt thead th.pt-ah { /* account header */
+    text-align: left; position: sticky; left: 0; z-index: 3;
+    min-width: 200px; max-width: 200px;
+    border-right: 2px solid var(--border2);
+    box-shadow: 3px 0 6px rgba(20,45,65,0.05);
+  }
+  .pt thead th.pt-th { /* total header */
+    border-left: 2px solid var(--border2);
+    border-right: none;
+    background: var(--surface2);
+    color: var(--text2);
+  }
+
+  /* ── Body rows ── */
+  .pt tbody tr { border-bottom: 1px solid var(--border); }
+  .pt tbody tr:hover td { background: #f5f8fb !important; }
+  .pt tbody tr:hover td.pt-ac  { background: #f5f8fb !important; }
+  .pt tbody tr.rchg { background: rgba(212,137,14,0.025); }
+
+  /* ── Sticky account column ── */
+  .pt td.pt-ac {
+    position: sticky; left: 0; z-index: 1;
+    background: var(--surface);
+    padding: 8px 12px;
+    border-right: 2px solid var(--border2);
+    box-shadow: 3px 0 6px rgba(20,45,65,0.05);
+    min-width: 200px; max-width: 200px;
+    vertical-align: middle;
+  }
+  .pt-nr   { font-family: 'IBM Plex Mono', monospace; font-size: 9px; color: var(--muted); line-height: 1.2; }
+  .pt-nm   { font-size: 11.5px; font-weight: 500; color: var(--text); line-height: 1.3; }
+  .pt-grp  { font-size: 9px; color: var(--muted); margin-top: 1px; }
+
+  /* ── Data cells ── */
+  .pt td.pt-d {
+    padding: 7px 11px;
+    text-align: right;
+    color: var(--muted);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    min-width: 96px;
+    border-right: 1px solid rgba(220,232,240,0.7);
+    vertical-align: middle;
+  }
+  /* Changed cell highlight */
+  .pt td.pt-d.chg { background: rgba(212,137,14,0.07); }
+  /* Sign colours */
+  .pt td.pt-d.pos { color: var(--green); }
+  .pt td.pt-d.neg { color: var(--red); }
+  .pt td.pt-d.zero { color: var(--muted); opacity: 0.45; }
+
+  /* Row total column */
+  .pt td.pt-rt {
+    border-left: 2px solid var(--border2);
+    border-right: none;
+    background: var(--surface2);
+    font-weight: 600;
+    min-width: 110px;
+  }
+
+  /* Compare-mode stacked values */
+  .cmp-orig  { font-size: 9.5px; color: var(--muted); }
+  .cmp-scen  { font-size: 11px;  color: var(--text); font-weight: 500; }
+  .cmp-scen.pos { color: var(--green); }
+  .cmp-scen.neg { color: var(--red); }
+  .cmp-delta { font-size: 9px; color: var(--muted); padding-top: 2px; border-top: 1px dashed var(--border); margin-top: 2px; }
+  .cmp-delta.pos { color: var(--green); }
+  .cmp-delta.neg { color: var(--red); }
+
+  /* ── Totals row ── */
+  .pt tr.trow td {
+    background: var(--bg) !important;
+    border-top: 2px solid var(--border2);
+    font-weight: 700; padding: 9px 11px;
+  }
+  .pt tr.trow td.pt-ac {
+    background: var(--bg) !important;
+    font-size: 9.5px; font-weight: 700;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--text2); vertical-align: middle;
+  }
+  .pt tr.trow td.pt-rt {
+    background: var(--bg) !important;
+  }
+
+  /* ── Group header rows (level 1) ── */
+  .pt tr.grow > td {
+    background: var(--bg);
+    border-top: 2px solid var(--border2);
+    padding: 7px 11px;
+    font-size: 10.5px; font-weight: 700;
+    color: var(--text2);
+    vertical-align: middle;
+  }
+  .pt tr.grow > td.pt-ac {
+    background: var(--bg);
+    cursor: pointer;
+    user-select: none;
+  }
+  .pt tr.grow > td.pt-rt { background: var(--surface2) !important; }
+  /* override generic hover so only the account cell reacts */
+  .pt tr.grow:hover > td       { background: var(--bg) !important; }
+  .pt tr.grow:hover > td.pt-ac { background: #e8f0f6 !important; }
+  .pt tr.grow:hover > td.pt-rt { background: var(--surface2) !important; }
+
+  /* Expand/collapse chevron */
+  .grp-hd-inner { display: flex; align-items: center; gap: 7px; }
+  .grp-chevron {
+    display: inline-block;
+    font-size: 8px; color: var(--muted); flex-shrink: 0;
+    transition: transform 0.18s ease;
+    font-style: normal;
+  }
+  .pt tr.grow.collapsed .grp-chevron { transform: rotate(-90deg); }
+  .grp-name {
+    font-size: 10.5px; font-weight: 700;
+    letter-spacing: 0.05em; text-transform: uppercase;
+    color: var(--text2); flex: 1;
+  }
+  .grp-count {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 9px; color: var(--muted);
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 3px; padding: 1px 5px;
+  }
+  .grp-delta {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 9px; padding: 1px 6px;
+    border-radius: 3px; border: 1px solid transparent;
+  }
+  .grp-delta.pos { color: var(--green); background: var(--green-lt); border-color: rgba(39,168,130,0.22); }
+  .grp-delta.neg { color: var(--red);   background: var(--red-lt);   border-color: rgba(208,64,96,0.22);  }
+
+  /* ── Child account rows (level 2) — indented ── */
+  .pt tr.gchild > td.pt-ac {
+    padding-left: 26px;
+    background: var(--surface2);
+  }
+  .pt tr.gchild:hover > td.pt-ac { background: #f5f8fb !important; }
+
+  /* Preview button in staged footer */
+  .s-btn.preview {
+    background: var(--surface);
+    border: 1.5px dashed var(--border2);
+    color: var(--text2);
+  }
+  .s-btn.preview:hover {
+    border-color: var(--accent);
+    border-style: solid;
+    background: var(--accent-lt);
+    color: var(--accent-dk);
+  }
+
+  /* Toast */
+  .toast {
+    position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%);
+    background: var(--text); color: #fff; border-radius: 20px;
+    padding: 8px 20px; font-size: 12px; font-weight: 500;
+    opacity: 0; transition: opacity 0.2s;
+    pointer-events: none; z-index: 200;
+    box-shadow: var(--shadow); white-space: nowrap;
+  }
+  .toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+
+<!-- ════ HEADER ════ -->
+<header>
+  <div class="brand">
+    <div class="brand-icon">dB</div>
+    <div class="brand-text">
+      <div class="brand-name">dataBob<em>CFO</em></div>
+      <div class="brand-sub">Scenario Planning</div>
+    </div>
+  </div>
+
+  <div class="h-sep"></div>
+
+  <div class="status-pill">
+    <div class="dot" id="dot"></div>
+    <span id="status-text">Initialising…</span>
+  </div>
+
+  <div class="header-actions">
+    <button class="h-btn" onclick="resetChat()">↺ Reset</button>
+    <button class="h-btn accent" id="connect-btn" onclick="connect()">⊕ Connect Model</button>
+  </div>
+</header>
+
+<!-- ════ MAIN CHAT ════ -->
+<main>
+  <div id="messages"></div>
+  <div class="input-area">
+    <textarea id="input"
+      placeholder="e.g. Stage +2% revenue for February, then +5% COGS for Q1…"
+      rows="1" onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+    <button id="send" onclick="sendMessage()">Send ↵</button>
+  </div>
+</main>
+
+<!-- ════ SIDEBAR ════ -->
+<aside>
+
+  <!-- ── Zone 1: Quick Actions ── -->
+  <div class="zone-quick">
+    <div class="zone-hd zone-bd">
+      <span class="zone-title">Quick Actions</span>
+    </div>
+    <div class="quick-scroll">
+      <button class="quick-btn" onclick="quickSend('Load 2026 budget data')">
+        ↓ Load 2026 Budget
+        <span class="qb-sub">Fetch GL baseline from Power BI</span>
+      </button>
+      <button class="quick-btn" onclick="quickSend('Who are the top 10 customers by revenue in 2025?')">
+        👥 Top 10 Customers
+        <span class="qb-sub">Ranked by 2025 actual revenue</span>
+      </button>
+      <button class="quick-btn" onclick="quickSend('Create a scenario reducing the biggest customer by 25% for the full year 2026')">
+        ↓ Biggest Customer −25%
+        <span class="qb-sub">Auto-calculates GL impact</span>
+      </button>
+      <button class="quick-btn" onclick="quickSend('Create a 2026 scenario with +3% revenue across all months')">
+        ↑ Revenue +3% Full Year
+        <span class="qb-sub">All revenue accounts</span>
+      </button>
+      <button class="quick-btn" onclick="quickSend('Create a 2026 scenario with +5% COGS in Q1 (months 1,2,3)')">
+        ↑ COGS +5% Q1
+        <span class="qb-sub">January through March</span>
+      </button>
+      <button class="quick-btn" onclick="quickSend('Create a conservative 2026 scenario: -5% revenue and -3% COGS for the full year')">
+        ↓ Conservative −5% Rev
+        <span class="qb-sub">Full year downside</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- ── Zone 2: Scenario Builder (flex, scrollable inside) ── -->
+  <div class="zone-builder" id="builder-section">
+    <div class="zone-hd zone-bd">
+      <span class="zone-title">Scenario Builder</span>
+      <span id="staged-badge" class="builder-badge" style="display:none;"></span>
+    </div>
+
+    <!-- staged items scroll here -->
+    <div class="staged-scroll" id="staged-list-wrap">
+      <div id="staged-list">
+        <div class="no-staged">No adjustments staged yet.<br>Describe your scenario in the chat.</div>
+      </div>
+    </div>
+
+    <!-- controls — only visible when there are staged items -->
+    <div class="staged-footer" id="staged-controls" style="display:none">
+      <div class="staged-meta" id="staged-id-badge">Next: scenario_id = 3</div>
+      <button class="s-btn preview" onclick="previewImpact()" style="width:100%">◎ Preview GL Impact</button>
+      <input type="text" id="scenario-name" class="scenario-name-input"
+             placeholder="Scenario name…" maxlength="50"
+             onkeydown="if(event.key==='Enter') applyScenario()">
+      <div class="staged-btn-row">
+        <button class="s-btn ghost" onclick="clearStaged()" style="flex:1">✕ Clear</button>
+        <button class="s-btn amber" onclick="applyScenario()" style="flex:2">⚡ Generate SQL</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Zone 3: Session Stats ── -->
+  <div class="zone-stats">
+    <div class="zone-hd zone-bd">
+      <span class="zone-title">Session</span>
+    </div>
+    <div class="stat-grid">
+      <div class="stat">
+        <div class="stat-val" id="stat-msgs">0</div>
+        <div class="stat-lbl">Messages</div>
+      </div>
+      <div class="stat">
+        <div class="stat-val" id="stat-files">0</div>
+        <div class="stat-lbl">SQL Files</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Zone 4: Generated Files ── -->
+  <div class="zone-files">
+    <div class="zone-hd zone-bd">
+      <span class="zone-title">Generated SQL Files</span>
+    </div>
+    <div class="file-scroll" id="file-list">
+      <div class="no-files">No files yet</div>
+    </div>
+  </div>
+
+</aside>
+
+<!-- ════ SQL VIEWER MODAL ════ -->
+<div class="modal-overlay" id="modal" onclick="closeModal(event)">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="modal-title">—</span>
+      <button class="m-btn" onclick="copySQL()">⎘ Copy</button>
+      <button class="m-btn" onclick="document.getElementById('modal').classList.remove('open')">✕ Close</button>
+    </div>
+    <div class="modal-body code-bg"><pre id="modal-content"></pre></div>
+  </div>
+</div>
+
+<!-- ════ MODEL PICKER MODAL ════ -->
+<div class="modal-overlay" id="picker-modal">
+  <div class="modal" style="width:500px; max-height:68vh">
+    <div class="modal-header">
+      <span class="modal-title" style="color:var(--accent-dk)">Connect to Power BI Model</span>
+      <button class="m-btn" onclick="closePicker()">✕ Cancel</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-subtitle" id="picker-subtitle">Scanning for open Power BI Desktop instances…</div>
+      <div class="model-list" id="model-list"></div>
+      <div class="picker-actions">
+        <button class="m-btn" onclick="refreshPicker()">↺ Refresh</button>
+        <button class="m-btn primary" id="picker-connect-btn" onclick="connectSelected()" disabled>Connect ↵</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════ GL IMPACT PREVIEW MODAL ════ -->
+<div class="modal-overlay" id="preview-modal" onclick="closePreviewOverlay(event)">
+  <div class="modal preview-modal-inner">
+    <div class="modal-header">
+      <div class="preview-hd-left">
+        <span class="modal-title">GL Impact Preview</span>
+        <div class="preview-summary" id="preview-summary">Loading…</div>
+      </div>
+      <div class="view-toggle">
+        <button class="vt-btn active" id="vt-delta"   onclick="setPreviewMode('delta')">Δ Delta</button>
+        <button class="vt-btn"        id="vt-compare" onclick="setPreviewMode('compare')">⊟ Compare</button>
+      </div>
+      <button class="m-btn" onclick="closePreview()">✕</button>
+    </div>
+    <div class="modal-body preview-body" id="preview-body">
+      <div style="padding:48px;text-align:center;color:var(--muted)">Loading…</div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+let msgCount  = 0;
+let currentSQL = "";
+let selectedInstance = null;
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+async function init() {
+  const s = await fetch("/api/status").then(r => r.json()).catch(() => null);
+  if (s) {
+    setStatus(s.connected, s.message);
+    if (s.agent_ready) setStatus(s.connected, s.connected ? "Connected to Power BI" : "Agent ready — click Connect Model");
+  }
+  addSystemMsg("dataBobCFO ready. Click ⊕ Connect Model to select a Power BI model.");
+  refreshFiles();
+  refreshStaged();
+}
+
+// ── Model picker ──────────────────────────────────────────────────────────────
+async function connect() {
+  document.getElementById("picker-modal").classList.add("open");
+  await refreshPicker();
+}
+
+async function refreshPicker() {
+  const list = document.getElementById("model-list");
+  const sub  = document.getElementById("picker-subtitle");
+  const btn  = document.getElementById("picker-connect-btn");
+  selectedInstance = null;
+  btn.disabled = true;
+  sub.textContent = "Scanning for open Power BI Desktop instances…";
+  list.innerHTML  = "";
+
+  let res;
+  try {
+    res = await fetch("/api/instances").then(r => r.json());
+  } catch(e) {
+    sub.textContent = "Error reaching server.";
+    list.innerHTML = `<div class="picker-empty">Could not reach the server.<br>${e}</div>`;
+    return;
+  }
+
+  const instances = res.instances || [];
+
+  if (!instances.length) {
+    sub.textContent = "No open models found.";
+    list.innerHTML  = `<div class="picker-empty">
+      No Power BI Desktop models detected.<br>
+      Make sure Power BI Desktop is open with a model loaded,<br>
+      then click <strong>Refresh</strong>.
+    </div>`;
+    return;
+  }
+
+  sub.textContent = `${instances.length} model${instances.length > 1 ? "s" : ""} found — select one to connect.`;
+
+  list.innerHTML = instances.map((inst, i) => {
+    const dbShort = inst.database ? inst.database.slice(0, 8) + "…" : "unknown";
+    return `<div class="model-item" id="model-item-${i}" onclick="selectModel(${i})">
+      <div class="model-name">${escHtml(inst.display_name)}</div>
+      <div class="model-meta">localhost:${inst.port}</div>
+      <div class="model-db">db: ${dbShort}</div>
+    </div>`;
+  }).join("");
+
+  if (instances.length === 1) selectModel(0, instances);
+  list._instances = instances;
+}
+
+function selectModel(idx) {
+  const list = document.getElementById("model-list");
+  const instances = list._instances;
+  if (!instances || !instances[idx]) return;
+  list.querySelectorAll(".model-item").forEach(el => el.classList.remove("selected"));
+  document.getElementById(`model-item-${idx}`).classList.add("selected");
+  selectedInstance = instances[idx];
+  document.getElementById("picker-connect-btn").disabled = false;
+}
+
+async function connectSelected() {
+  if (!selectedInstance) return;
+  const btn = document.getElementById("picker-connect-btn");
+  btn.disabled = true; btn.textContent = "Connecting…";
+  const connectBtn = document.getElementById("connect-btn");
+  connectBtn.disabled = true; connectBtn.textContent = "Connecting…";
+  document.getElementById("picker-modal").classList.remove("open");
+  setStatus(false, "Connecting…");
+
+  const r = await fetch("/api/connect", {
+    method:  "POST",
+    headers: {"Content-Type": "application/json"},
+    body:    JSON.stringify({
+      connection_string: selectedInstance.connection_string,
+      database:          selectedInstance.database,
+    })
+  }).then(r => r.json()).catch(e => ({ok: false, message: String(e)}));
+
+  connectBtn.disabled    = false;
+  connectBtn.textContent = r.ok ? "✓ Connected" : "⊕ Reconnect";
+  btn.disabled = false; btn.textContent = "Connect ↵";
+  setStatus(r.ok, r.ok
+    ? `Connected — ${selectedInstance.display_name}`
+    : r.message);
+  addSystemMsg(r.ok
+    ? `Connected to "${selectedInstance.display_name}" on port ${selectedInstance.port}`
+    : `Connection failed: ${r.message}`);
+}
+
+function closePicker() {
+  document.getElementById("picker-modal").classList.remove("open");
+  document.getElementById("connect-btn").disabled = false;
+}
+
+document.addEventListener("click", e => {
+  const modal = document.getElementById("picker-modal");
+  if (e.target === modal) closePicker();
+});
+
+function setStatus(ok, msg) {
+  document.getElementById("dot").className = "dot " + (ok ? "connected" : "error");
+  document.getElementById("status-text").textContent = msg || (ok ? "Connected" : "Disconnected");
+}
+
+// ── Chat ──────────────────────────────────────────────────────────────────────
+async function sendMessage() {
+  const inp = document.getElementById("input");
+  const msg = inp.value.trim();
+  if (!msg) return;
+  inp.value = ""; autoResize(inp);
+
+  addMsg("user", msg);
+  msgCount++;
+  document.getElementById("stat-msgs").textContent = msgCount;
+
+  const thinking = addThinking();
+
+  const r = await fetch("/api/chat", {
+    method:  "POST",
+    headers: {"Content-Type": "application/json"},
+    body:    JSON.stringify({message: msg})
+  }).then(r => r.json()).catch(e => ({ok: false, error: String(e)}));
+
+  thinking.remove();
+
+  if (r.ok) {
+    addMsg("agent", r.reply, r.latest_sql);
+    if (r.latest_sql) refreshFiles();
+    refreshStaged();
+  } else {
+    addMsg("agent", "Error: " + (r.error || "Unknown error"));
+  }
+}
+
+function quickSend(msg) {
+  document.getElementById("input").value = msg;
+  sendMessage();
+}
+
+function handleKey(e) {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+}
+
+function autoResize(el) {
+  el.style.height = "auto";
+  el.style.height = Math.min(el.scrollHeight, 120) + "px";
+}
+
+// ── Messages ──────────────────────────────────────────────────────────────────
+function addMsg(role, text, sqlPath) {
+  const msgs   = document.getElementById("messages");
+  const div    = document.createElement("div");
+  const hasSql = !!(sqlPath);
+  div.className = `msg msg-${role}` + (hasSql ? " has-sql" : "");
+
+  const label = document.createElement("div");
+  label.className   = "msg-label";
+  label.textContent = role === "user" ? "You" : "dataBobCFO";
+  div.appendChild(label);
+
+  const body = document.createElement("div");
+  body.className   = "msg-text";
+  body.textContent = text;
+  div.appendChild(body);
+
+  if (hasSql) {
+    const fname = sqlPath.split(/[\\/]/).pop();
+    const badge = document.createElement("div");
+    badge.className = "sql-badge";
+    badge.innerHTML = `<span>◈</span> ${fname}`;
+    badge.onclick   = () => openFile(fname);
+    div.appendChild(badge);
+  }
+
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function addSystemMsg(text) {
+  const msgs = document.getElementById("messages");
+  const div  = document.createElement("div");
+  div.className   = "msg msg-system";
+  div.textContent = text;
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function addThinking() {
+  const msgs = document.getElementById("messages");
+  const div  = document.createElement("div");
+  div.className = "thinking";
+  div.innerHTML = `<div class="dots"><span></span><span></span><span></span></div> Thinking…`;
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+  return div;
+}
+
+// ── Reset ─────────────────────────────────────────────────────────────────────
+async function resetChat() {
+  await fetch("/api/reset", {method: "POST"});
+  document.getElementById("messages").innerHTML = "";
+  msgCount = 0;
+  document.getElementById("stat-msgs").textContent = "0";
+  addSystemMsg("Conversation reset. Budget data cache preserved.");
+  refreshStaged();
+}
+
+// ── File list ─────────────────────────────────────────────────────────────────
+async function refreshFiles() {
+  const files = await fetch("/api/files").then(r => r.json()).catch(() => []);
+  const list  = document.getElementById("file-list");
+  document.getElementById("stat-files").textContent = files.length;
+
+  if (!files.length) {
+    list.innerHTML = '<div class="no-files">No files yet</div>';
+    return;
+  }
+  list.innerHTML = files.map(f => {
+    const kb = (f.size / 1024).toFixed(1);
+    const dt = new Date(f.mtime * 1000).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+    return `<div class="file-item" onclick="openFile('${f.name}')">
+      <div class="file-dot"></div>
+      <div class="file-info">
+        <div class="file-name">${f.name}</div>
+        <div class="file-meta">${kb} KB · ${dt}</div>
+      </div>
+    </div>`;
+  }).join("");
+}
+
+// ── SQL Viewer ────────────────────────────────────────────────────────────────
+async function openFile(name) {
+  const r = await fetch(`/api/file/${encodeURIComponent(name)}`).then(r => r.json());
+  if (!r.content) return;
+  currentSQL = r.content;
+  document.getElementById("modal-title").textContent = r.name;
+  document.getElementById("modal-content").innerHTML = highlightSQL(r.content);
+  document.getElementById("modal").classList.add("open");
+}
+
+function closeModal(e) {
+  if (e.target === document.getElementById("modal"))
+    document.getElementById("modal").classList.remove("open");
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+function highlightSQL(sql) {
+  const esc = sql.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  return esc
+    .replace(/(--[^\n]*)/g, '<span class="cm">$1</span>')
+    .replace(/\b(INSERT|INTO|VALUES|DELETE|FROM|WHERE|AND|SELECT|ORDER|BY|CREATE|TABLE)\b/g,
+             '<span class="kw">$1</span>')
+    .replace(/'([^']*)'/g, "<span class=\"st\">'$1'</span>")
+    .replace(/\b(\d+\.\d+|\d+)\b/g, '<span class="nm">$1</span>');
+}
+
+function copySQL() {
+  navigator.clipboard.writeText(currentSQL).then(() => toast("SQL copied to clipboard"));
+}
+
+function toast(msg) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  setTimeout(() => t.classList.remove("show"), 2200);
+}
+
+// ── Scenario Builder ──────────────────────────────────────────────────────────
+async function refreshStaged() {
+  const r = await fetch("/api/scenario/staged")
+    .then(res => res.json())
+    .catch(() => ({ staged: [], next_id: 3, adjustment_count: 0 }));
+
+  const items    = r.staged || [];
+  const list     = document.getElementById("staged-list");
+  const controls = document.getElementById("staged-controls");
+  const badge    = document.getElementById("staged-badge");
+  const idBadge  = document.getElementById("staged-id-badge");
+
+  if (!items.length) {
+    list.innerHTML = '<div class="no-staged">No adjustments staged yet.<br>Describe your scenario in the chat.</div>';
+    controls.style.display = "none";
+    badge.style.display    = "none";
+    return;
+  }
+
+  badge.style.display = "inline";
+  badge.textContent   = r.adjustment_count + " adj";
+  controls.style.display = "flex";
+  idBadge.textContent    = `scenario_id = ${r.next_id}`;
+
+  list.innerHTML = items.map((item, i) => {
+    const tags = (item.adjustments || []).map(adj => {
+      const sign  = adj.pct_change >= 0 ? "+" : "";
+      const cls   = adj.pct_change >= 0 ? "pos" : "neg";
+      const mon   = adj.months && adj.months.length
+        ? " · M" + adj.months.join(",")
+        : " · full yr";
+      return `<span class="staged-tag ${cls}">${sign}${adj.pct_change}% ${adj.account_group}${mon}</span>`;
+    }).join("");
+    return `<div class="staged-item">
+      <button class="staged-remove" onclick="removeStep(${i})" title="Remove step">✕</button>
+      <div class="staged-step-row">
+        <span class="staged-step">Step ${i + 1}</span>
+      </div>
+      <div class="staged-desc">${escHtml(item.description)}</div>
+      <div class="staged-tags">${tags}</div>
+    </div>`;
+  }).join("");
+}
+
+async function clearStaged() {
+  await fetch("/api/scenario/clear", { method: "POST" });
+  document.getElementById("scenario-name").value = "";
+  await refreshStaged();
+  toast("Staging area cleared");
+}
+
+async function removeStep(index) {
+  const r = await fetch(`/api/scenario/staged/${index}`, { method: "DELETE" })
+    .then(res => res.json())
+    .catch(e => ({ ok: false, error: String(e) }));
+  if (!r.ok) { toast("Could not remove step: " + (r.error || "unknown error")); return; }
+  await refreshStaged();
+  toast("Step removed");
+}
+
+async function applyScenario() {
+  const nameEl = document.getElementById("scenario-name");
+  const name   = nameEl.value.trim();
+  if (!name) {
+    toast("Enter a scenario name first");
+    nameEl.focus();
+    return;
+  }
+  document.getElementById("input").value = `Generate the SQL now. Name this scenario "${name}".`;
+  nameEl.value = "";
+  sendMessage();
+}
+
+// ── GL Impact Preview ─────────────────────────────────────────────────────────
+let _previewData      = null;
+let _previewMode      = 'delta';
+let _collapsedGroups  = new Set();  // numeric keys of currently-collapsed group rows
+
+async function previewImpact() {
+  _previewData = null;
+  document.getElementById("preview-modal").classList.add("open");
+  document.getElementById("preview-summary").textContent = "Loading…";
+  document.getElementById("preview-body").innerHTML =
+    `<div style="padding:56px;text-align:center;color:var(--muted);font-size:13px">
+       <div class="dots" style="justify-content:center;margin-bottom:12px">
+         <span></span><span></span><span></span>
+       </div>
+       Computing impact…
+     </div>`;
+
+  const r = await fetch("/api/scenario/preview")
+    .then(res => res.json())
+    .catch(e => ({ ok: false, error: String(e) }));
+
+  if (!r.ok) {
+    document.getElementById("preview-body").innerHTML =
+      `<div style="padding:48px;text-align:center;color:var(--red);font-size:13px">${escHtml(r.error)}</div>`;
+    document.getElementById("preview-summary").textContent = "";
+    return;
+  }
+
+  _previewData     = r;
+  _collapsedGroups = new Set();   // all groups expanded on fresh load
+  setPreviewMode('delta', false);
+  renderPreview();
+}
+
+function setPreviewMode(mode, rerender = true) {
+  _previewMode = mode;
+  document.getElementById("vt-delta").classList.toggle("active",   mode === "delta");
+  document.getElementById("vt-compare").classList.toggle("active", mode === "compare");
+  if (rerender && _previewData) renderPreview();
+}
+
+function renderPreview() {
+  const { months, accounts, totals } = _previewData;
+  const grand = totals["total"];
+
+  // ── Summary line ──────────────────────────────────────────────────────────
+  const changedAccs   = accounts.filter(a => Math.abs(a.total.delta) >= 0.5).length;
+  const changedMonths = months.filter(m =>
+    accounts.some(a => Math.abs(((a.months[m]) || {}).delta || 0) >= 0.5)
+  ).length;
+  const sign = grand.delta >= 0 ? "+" : "−";
+  const cls  = grand.delta >= 0 ? "pos" : "neg";
+  document.getElementById("preview-summary").innerHTML =
+    `Net impact: <span class="iv ${cls}">${sign}CHF ${n0(Math.abs(grand.delta))}</span>` +
+    ` &nbsp;·&nbsp; ${changedAccs} of ${accounts.length} accounts changed` +
+    ` &nbsp;·&nbsp; ${changedMonths} of ${months.length} months`;
+
+  // ── Group accounts by grp (preserve first-seen order) ────────────────────
+  const groups = [];
+  const grpMap = new Map();   // label → {label, key(int), accounts[]}
+  for (const acc of accounts) {
+    const label = acc.grp || "Other";
+    if (!grpMap.has(label)) {
+      const g = { label, key: grpMap.size, accounts: [] };
+      grpMap.set(label, g);
+      groups.push(g);
+    }
+    grpMap.get(label).accounts.push(acc);
+  }
+
+  // Compute group-level subtotals per month + row total
+  for (const grp of groups) {
+    grp.monthTotals = {};
+    for (const m of months) {
+      const orig = grp.accounts.reduce((s, a) => s + ((a.months[m] || {}).original || 0), 0);
+      const scen = grp.accounts.reduce((s, a) => s + ((a.months[m] || {}).scenario || 0), 0);
+      grp.monthTotals[m] = { original: orig, scenario: scen, delta: scen - orig };
+    }
+    const orig = grp.accounts.reduce((s, a) => s + a.total.original, 0);
+    const scen = grp.accounts.reduce((s, a) => s + a.total.scenario, 0);
+    grp.total = { original: orig, scenario: scen, delta: scen - orig };
+  }
+
+  // ── Month column headers ─────────────────────────────────────────────────
+  const MONTHS_SHORT = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const mHdrs = months.map(m => {
+    const yr = m.slice(2,4);
+    const mo = MONTHS_SHORT[parseInt(m.slice(5,7), 10) - 1];
+    return `${mo} '${yr}`;
+  });
+
+  // ── Build table ───────────────────────────────────────────────────────────
+  let h = `<div class="pt-wrap"><table class="pt"><thead><tr>
+    <th class="pt-ah">Account / Group</th>
+    ${mHdrs.map(l => `<th>${l}</th>`).join("")}
+    <th class="pt-th">Total</th>
+  </tr></thead><tbody>`;
+
+  for (const grp of groups) {
+    const collapsed  = _collapsedGroups.has(grp.key);
+    const grpChanged = Math.abs(grp.total.delta) >= 0.5;
+    const grpDeltaCls = grp.total.delta >= 0 ? "pos" : "neg";
+    const deltaBadge  = grpChanged
+      ? `<span class="grp-delta ${grpDeltaCls}">${fmtDelta(grp.total.delta)}</span>`
+      : "";
+
+    // ── Level-1: group header row ─────────────────────────────────────────
+    h += `<tr class="grow${collapsed ? " collapsed" : ""}" data-grp="${grp.key}">`;
+    h += `<td class="pt-ac" onclick="toggleGroup(${grp.key})">
+      <div class="grp-hd-inner">
+        <span class="grp-chevron">▼</span>
+        <span class="grp-name">${escHtml(grp.label)}</span>
+        <span class="grp-count">${grp.accounts.length}</span>
+        ${deltaBadge}
+      </div>
+    </td>`;
+    for (const m of months) {
+      h += ptCell(grp.monthTotals[m], _previewMode, "");
+    }
+    h += ptCell(grp.total, _previewMode, "pt-rt");
+    h += `</tr>`;
+
+    // ── Level-2: child account rows ───────────────────────────────────────
+    for (const acc of grp.accounts) {
+      const rowChanged = Math.abs(acc.total.delta) >= 0.5;
+      const display    = collapsed ? ' style="display:none"' : "";
+      h += `<tr class="gchild${rowChanged ? " rchg" : ""}" data-grp="${grp.key}"${display}>`;
+      h += `<td class="pt-ac">
+        <div class="pt-nr">${escHtml(acc.nr)}</div>
+        <div class="pt-nm">${escHtml(acc.name)}</div>
+      </td>`;
+      for (const m of months) {
+        h += ptCell(acc.months[m], _previewMode, "");
+      }
+      h += ptCell(acc.total, _previewMode, "pt-rt");
+      h += `</tr>`;
+    }
+  }
+
+  // ── Grand total row ───────────────────────────────────────────────────────
+  h += `<tr class="trow"><td class="pt-ac">Grand Total</td>`;
+  for (const m of months) {
+    h += ptCell(totals[m], _previewMode, "");
+  }
+  h += ptCell(grand, _previewMode, "pt-rt");
+  h += `</tr></tbody></table></div>`;
+
+  document.getElementById("preview-body").innerHTML = h;
+}
+
+/** Render one table cell in either delta or compare mode. */
+function ptCell(cell, mode, extraCls) {
+  const changed = Math.abs(cell.delta) >= 0.5;
+  const pn      = cell.delta > 0 ? "pos" : "neg";
+
+  if (mode === "delta") {
+    const cls = changed ? pn : "zero";
+    return `<td class="pt-d ${extraCls} ${changed ? "chg" : ""} ${cls}">${
+      changed ? fmtDelta(cell.delta) : "—"
+    }</td>`;
+  } else {
+    // compare: orig / scenario / delta stacked
+    return `<td class="pt-d ${extraCls} ${changed ? "chg" : ""}">
+      <div class="cmp-orig">${n0s(cell.original)}</div>
+      <div class="cmp-scen ${changed ? pn : ""}">${n0s(cell.scenario)}</div>
+      ${changed ? `<div class="cmp-delta ${pn}">${fmtDelta(cell.delta)}</div>` : ""}
+    </td>`;
+  }
+}
+
+/** Format absolute number with thousands separator (de-CH locale). */
+function n0(v) {
+  return Math.round(Math.abs(v)).toLocaleString("de-CH");
+}
+/** Format number with sign for negatives only. */
+function n0s(v) {
+  return (v < 0 ? "−" : "") + n0(v);
+}
+/** Format delta always with + or − sign. */
+function fmtDelta(v) {
+  return (v >= 0 ? "+" : "−") + n0(v);
+}
+
+/** Toggle expand/collapse of a group row without a full re-render. */
+function toggleGroup(key) {
+  const isCollapsed = _collapsedGroups.has(key);
+  if (isCollapsed) _collapsedGroups.delete(key);
+  else             _collapsedGroups.add(key);
+
+  // Show/hide child rows
+  document.querySelectorAll(`.gchild[data-grp="${key}"]`).forEach(tr => {
+    tr.style.display = isCollapsed ? "" : "none";
+  });
+
+  // Rotate chevron on the header row
+  const hdr = document.querySelector(`.grow[data-grp="${key}"]`);
+  if (hdr) hdr.classList.toggle("collapsed", !isCollapsed);
+}
+
+function closePreview() {
+  document.getElementById("preview-modal").classList.remove("open");
+}
+function closePreviewOverlay(e) {
+  if (e.target === document.getElementById("preview-modal")) closePreview();
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+init();
+setInterval(refreshFiles,  10000);
+setInterval(refreshStaged,  5000);
+</script>
+</body>
+</html>
