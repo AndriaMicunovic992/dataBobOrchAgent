@@ -39,17 +39,28 @@ def _inject_token(url: str) -> str:
 
 def _check_git_available() -> str | None:
     """Return None if git is usable, or an error message if not."""
-    if HAS_GITPYTHON:
-        return None
-    # Try subprocess git as fallback
     import shutil
+    # gitpython STILL needs the git binary — check it's actually there
     if shutil.which("git"):
         return None
+    if HAS_GITPYTHON:
+        # gitpython imported but git binary missing — common on Railway/Docker
+        try:
+            gitpython.Repo.init.__module__  # basic check
+            # Try to actually invoke git to verify
+            gitpython.cmd.Git().version()
+            return None
+        except Exception:
+            return (
+                "gitpython installed but git binary not found.\n"
+                "On Railway: add a nixpacks.toml with aptPkgs = [\"git\"]\n"
+                "On Docker: add 'RUN apt-get install -y git' to Dockerfile"
+            )
     return (
         "Git not found. Fix:\n"
         "1. Install gitpython:  pip install gitpython\n"
         "   OR\n"
-        "2. Install Git for Windows from git-scm.com, restart CMD/terminal"
+        "2. Install git:  apt-get install git (Linux) / brew install git (Mac)"
     )
 
 
