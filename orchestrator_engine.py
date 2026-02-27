@@ -27,13 +27,15 @@ from anthropic import AsyncAnthropic
 import git_tools
 from git_tools import GIT_TOOLS
 from project_memory import Project, get_active, set_active, slugify
+from rate_limiter import RateLimitedClient
 
 # ── Config ────────────────────────────────────────────────────────────────────
 ORCHESTRATOR_MODEL = "claude-opus-4-6"
 SUBAGENT_MODEL     = "claude-sonnet-4-6"
 CHEAP_MODEL        = "claude-haiku-4-5-20251001"
 
-client = AsyncAnthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+_raw_client = AsyncAnthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+client = RateLimitedClient(_raw_client, max_tpm=30_000)
 
 # ── Persistent conversation memory ───────────────────────────────────────────
 CONV_DIR = Path("./data/conversations")
