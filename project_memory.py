@@ -370,18 +370,54 @@ ARCHITECTURE DECISIONS:
         return base
 
 
-# ── User → active project mapping ─────────────────────────────────────────────
+# ── Persistent user → active project mapping ─────────────────────────────────
+_ACTIVE_FILE = Path("./data/active_projects.json")
+_ACTIVE_FILE.parent.mkdir(parents=True, exist_ok=True)
+
 _active: dict[int, str] = {}   # user_id → project slug
+_active_loaded = False
+
+
+def _load_active():
+    global _active, _active_loaded
+    if _active_loaded:
+        return
+    _active_loaded = True
+    if _ACTIVE_FILE.exists():
+        try:
+            data = json.loads(_ACTIVE_FILE.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                _active = {int(k): v for k, v in data.items()}
+        except Exception:
+            pass
+
+
+def _save_active():
+    try:
+        _ACTIVE_FILE.write_text(
+            json.dumps({str(k): v for k, v in _active.items()}, indent=2),
+            encoding="utf-8",
+        )
+    except Exception:
+        pass
+
 
 def get_active(user_id: int) -> Project | None:
+    _load_active()
     slug = _active.get(user_id)
     if not slug:
         return None
     p = Project(slug)
     return p if p.exists() else None
 
+
 def set_active(user_id: int, slug: str):
+    _load_active()
     _active[user_id] = slug
+    _save_active()
+
 
 def clear_active(user_id: int):
+    _load_active()
     _active.pop(user_id, None)
+    _save_active()

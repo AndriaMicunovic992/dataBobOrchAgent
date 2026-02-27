@@ -35,14 +35,184 @@ CHEAP_MODEL        = "claude-haiku-4-5-20251001"
 
 client = AsyncAnthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
 
-# Per-user conversation memory
+# ── Persistent conversation memory ───────────────────────────────────────────
+CONV_DIR = Path("./data/conversations")
+CONV_DIR.mkdir(parents=True, exist_ok=True)
+MAX_CONVERSATION_MESSAGES = 80  # ~40 user/assistant turns
+
 _conversations: dict[int, list[dict]] = {}
+_conversations_loaded: set[int] = set()
+
+
+def _serialize_content(content):
+    """Convert Anthropic SDK ContentBlock objects to JSON-serializable dicts."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        result = []
+        for item in content:
+            if isinstance(item, dict):
+                result.append(item)
+            elif hasattr(item, "type"):
+                if item.type == "text":
+                    result.append({"type": "text", "text": item.text})
+                elif item.type == "tool_use":
+                    result.append({
+                        "type": "tool_use",
+                        "id": item.id,
+                        "name": item.name,
+                        "input": item.input,
+                    })
+                elif item.type == "tool_result":
+                    result.append({
+                        "type": "tool_result",
+                        "tool_use_id": getattr(item, "tool_use_id", ""),
+                        "content": getattr(item, "content", ""),
+                    })
+                else:
+                    try:
+                        result.append(item.model_dump())
+                    except Exception:
+                        result.append({"type": "text", "text": str(item)})
+            else:
+                result.append(item)
+        return result
+    return content
+
+
+def _serialize_message(msg: dict) -> dict:
+    """Serialize a single conversation message for JSON storage."""
+    return {"role": msg["role"], "content": _serialize_content(msg.get("content", ""))}
+
+
+def _save_conversation(user_id: int):
+    """Persist a user's conversation to disk."""
+    try:
+        conv = _conversations.get(user_id, [])
+        serialized = [_serialize_message(m) for m in conv]
+        fp = CONV_DIR / f"{user_id}.json"
+        fp.write_text(json.dumps(serialized, ensure_ascii=False, default=str), encoding="utf-8")
+    except Exception as e:
+        log.warning("Failed to save conversation for user %s: %s", user_id, e)
+
+
+def _load_conversation(user_id: int) -> list[dict]:
+    """Load a user's conversation from disk."""
+    fp = CONV_DIR / f"{user_id}.json"
+    if not fp.exists():
+        return []
+    try:
+        data = json.loads(fp.read_text(encoding="utf-8"))
+        if isinstance(data, list):
+            return data
+    except Exception as e:
+        log.warning("Failed to load conversation for user %s: %s", user_id, e)
+    return []
+
+
+def _extract_text_from_message(msg: dict) -> str:
+    """Pull readable text out of a conversation message (for summarization)."""
+    content = msg.get("content", "")
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, dict):
+                if item.get("type") == "text":
+                    parts.append(item.get("text", ""))
+                elif item.get("type") == "tool_use":
+                    parts.append(f"[called {item.get('name', '?')}]")
+                elif item.get("type") == "tool_result":
+                    c = item.get("content", "")
+                    if isinstance(c, str):
+                        parts.append(c[:200])
+            elif hasattr(item, "type"):
+                if item.type == "text":
+                    parts.append(item.text)
+                elif item.type == "tool_use":
+                    parts.append(f"[called {item.name}]")
+        return " ".join(parts)
+    return str(content)[:300]
+
+
+async def _summarize_old_messages(old_messages: list[dict]) -> str:
+    """Use Haiku to compress a chunk of conversation into a short summary."""
+    # Build a readable transcript from the messages being dropped
+    transcript_lines = []
+    for msg in old_messages:
+        role = msg.get("role", "?").upper()
+        text = _extract_text_from_message(msg)
+        if text.strip():
+            # Cap each message to avoid huge transcripts
+            transcript_lines.append(f"{role}: {text[:500]}")
+
+    transcript = "\n".join(transcript_lines)
+    # Cap the total transcript sent to Haiku
+    if len(transcript) > 12000:
+        transcript = transcript[:12000] + "\n... (truncated)"
+
+    try:
+        response = await client.messages.create(
+            model=CHEAP_MODEL,
+            max_tokens=600,
+            system=(
+                "You are a conversation summarizer. Given an excerpt from a "
+                "conversation between a user and an AI development assistant, "
+                "produce a concise bullet-point summary capturing:\n"
+                "- Key decisions made\n"
+                "- Tasks completed or in progress\n"
+                "- Important technical details (file names, tools, errors)\n"
+                "- Any open questions or pending items\n\n"
+                "Be brief and factual. Max 10 bullet points."
+            ),
+            messages=[{"role": "user", "content": transcript}],
+        )
+        summary = " ".join(b.text for b in response.content if b.type == "text")
+        return summary.strip()
+    except Exception as e:
+        log.warning("Summarization failed, falling back to simple trim: %s", e)
+        return ""
+
+
+async def _summarize_and_trim(conversation: list[dict]) -> list[dict]:
+    """Trim conversation to size limit, summarizing the dropped messages first.
+    Returns the trimmed conversation (may be unchanged if under the limit)."""
+    if len(conversation) <= MAX_CONVERSATION_MESSAGES:
+        return conversation
+
+    # Messages to keep: first 2 (initial context) + most recent ones
+    keep_recent = MAX_CONVERSATION_MESSAGES - 3  # -3 to leave room for summary msg
+    old_messages = conversation[2:-keep_recent]  # the ones being dropped
+    recent_messages = conversation[-keep_recent:]
+
+    # Summarize the old messages
+    summary = await _summarize_old_messages(old_messages)
+
+    if summary:
+        summary_msg = {
+            "role": "user",
+            "content": (
+                f"[CONVERSATION SUMMARY - earlier discussion condensed]\n{summary}\n"
+                "[END SUMMARY - conversation continues below]"
+            ),
+        }
+        return conversation[:2] + [summary_msg] + recent_messages
+    else:
+        # Summarization failed, fall back to simple trim
+        return conversation[:2] + recent_messages
+
 
 def get_conversation(user_id: int) -> list[dict]:
+    if user_id not in _conversations_loaded:
+        _conversations[user_id] = _load_conversation(user_id)
+        _conversations_loaded.add(user_id)
     return _conversations.setdefault(user_id, [])
+
 
 def clear_conversation(user_id: int):
     _conversations[user_id] = []
+    _save_conversation(user_id)
 
 def _sanitize_conversation(conversation: list[dict]) -> list[dict]:
     """Remove orphaned tool_use messages that lack matching tool_result.
@@ -279,7 +449,7 @@ async def run_claude_code_subagent(
     result = await git_tools.run_claude_code(task, working_dir)
 
     # If Claude Code isn't installed, fall back to SDK subagent automatically
-    if result.startswith("❌ Claude Code CLI not found"):
+    if "Claude Code CLI not found" in result:
         if status_cb:
             await status_cb(
                 "⚠️ Claude Code CLI not installed — falling back to SDK agent.\n"
@@ -1039,6 +1209,14 @@ async def chat(
 ) -> str:
     conversation = get_conversation(user_id)
     conversation.append({"role": "user", "content": message})
+
+    # Summarize & trim conversation if it's getting too long
+    trimmed = await _summarize_and_trim(conversation)
+    if len(trimmed) != len(conversation):
+        _conversations[user_id] = trimmed
+        conversation = trimmed
+        _save_conversation(user_id)  # persist the trimmed version
+
     system = build_system_prompt(project)
 
     while True:
@@ -1047,19 +1225,38 @@ async def chat(
         if len(clean) != len(conversation):
             _conversations[user_id] = clean
             conversation = clean
-        response = await client.messages.create(
-            model=ORCHESTRATOR_MODEL,
-            max_tokens=4096,
-            system=system,
-            tools=ORCHESTRATOR_TOOLS,
-            messages=conversation,
-        )
+        try:
+            response = await client.messages.create(
+                model=ORCHESTRATOR_MODEL,
+                max_tokens=4096,
+                system=system,
+                tools=ORCHESTRATOR_TOOLS,
+                messages=conversation,
+            )
+        except Exception as api_err:
+            # If conversation is corrupted beyond repair, reset and retry
+            err_str = str(api_err)
+            if "400" in err_str or "invalid" in err_str.lower():
+                log.warning("API error with conversation, resetting: %s", api_err)
+                _conversations[user_id] = [{"role": "user", "content": message}]
+                conversation = _conversations[user_id]
+                response = await client.messages.create(
+                    model=ORCHESTRATOR_MODEL,
+                    max_tokens=4096,
+                    system=system,
+                    tools=ORCHESTRATOR_TOOLS,
+                    messages=conversation,
+                )
+            else:
+                raise
 
         text_parts = [b.text for b in response.content if b.type == "text"]
         tool_uses  = [b for b in response.content if b.type == "tool_use"]
 
         if not tool_uses or response.stop_reason == "end_turn":
             conversation.append({"role": "assistant", "content": response.content})
+            # ── Auto-save conversation to disk ──
+            _save_conversation(user_id)
             return "".join(text_parts)
 
         conversation.append({"role": "assistant", "content": response.content})
@@ -1097,3 +1294,5 @@ async def chat(
                 result = f"❌ Tool '{tool.name}' failed: {e}"
             tool_results.append({"type": "tool_result", "tool_use_id": tool.id, "content": result})
         conversation.append({"role": "user", "content": tool_results})
+        # ── Auto-save after each tool round too ──
+        _save_conversation(user_id)
