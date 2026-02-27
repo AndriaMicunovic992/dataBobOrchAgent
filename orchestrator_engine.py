@@ -26,7 +26,7 @@ from anthropic import AsyncAnthropic
 
 import git_tools
 from git_tools import GIT_TOOLS
-from project_memory import Project, get_active, set_active, slugify
+from project_memory import Project, get_active, set_active, slugify, list_projects
 from rate_limiter import RateLimitedClient
 
 # ── Config ────────────────────────────────────────────────────────────────────
@@ -44,6 +44,7 @@ MAX_CONVERSATION_MESSAGES = 80  # ~40 user/assistant turns
 
 _conversations: dict[int, list[dict]] = {}
 _conversations_loaded: set[int] = set()
+_session_resumed: set[int] = set()  # users whose conversations were loaded from disk
 
 
 def _serialize_content(content):
@@ -138,10 +139,12 @@ def _extract_text_from_message(msg: dict) -> str:
     return str(content)[:300]
 
 
-async def _summarize_old_messages(old_messages: list[dict]) -> str:
+async def _summarize_old_messages(old_messages: list[dict], project_name: str = "") -> str:
     """Use Haiku to compress a chunk of conversation into a short summary."""
     # Build a readable transcript from the messages being dropped
     transcript_lines = []
+    if project_name:
+        transcript_lines.append(f"[Project: {project_name}]")
     for msg in old_messages:
         role = msg.get("role", "?").upper()
         text = _extract_text_from_message(msg)
@@ -162,11 +165,13 @@ async def _summarize_old_messages(old_messages: list[dict]) -> str:
                 "You are a conversation summarizer. Given an excerpt from a "
                 "conversation between a user and an AI development assistant, "
                 "produce a concise bullet-point summary capturing:\n"
+                "- The project name and what is being built\n"
                 "- Key decisions made\n"
                 "- Tasks completed or in progress\n"
                 "- Important technical details (file names, tools, errors)\n"
                 "- Any open questions or pending items\n\n"
-                "Be brief and factual. Max 10 bullet points."
+                "Be brief and factual. Max 10 bullet points. "
+                "Always start with the project name/identity."
             ),
             messages=[{"role": "user", "content": transcript}],
         )
@@ -177,7 +182,7 @@ async def _summarize_old_messages(old_messages: list[dict]) -> str:
         return ""
 
 
-async def _summarize_and_trim(conversation: list[dict]) -> list[dict]:
+async def _summarize_and_trim(conversation: list[dict], project: "Project | None" = None) -> list[dict]:
     """Trim conversation to size limit, summarizing the dropped messages first.
     Returns the trimmed conversation (may be unchanged if under the limit)."""
     if len(conversation) <= MAX_CONVERSATION_MESSAGES:
@@ -188,16 +193,20 @@ async def _summarize_and_trim(conversation: list[dict]) -> list[dict]:
     old_messages = conversation[2:-keep_recent]  # the ones being dropped
     recent_messages = conversation[-keep_recent:]
 
-    # Summarize the old messages
-    summary = await _summarize_old_messages(old_messages)
+    # Summarize the old messages, including project name for context
+    project_name = ""
+    if project:
+        data = project.load()
+        project_name = data.get("name", project.slug)
+    summary = await _summarize_old_messages(old_messages, project_name=project_name)
 
     if summary:
+        header = "[CONVERSATION SUMMARY - earlier discussion condensed]"
+        if project_name:
+            header = f"[CONVERSATION SUMMARY for project '{project_name}' - earlier discussion condensed]"
         summary_msg = {
             "role": "user",
-            "content": (
-                f"[CONVERSATION SUMMARY - earlier discussion condensed]\n{summary}\n"
-                "[END SUMMARY - conversation continues below]"
-            ),
+            "content": f"{header}\n{summary}\n[END SUMMARY - conversation continues below]",
         }
         return conversation[:2] + [summary_msg] + recent_messages
     else:
@@ -207,8 +216,11 @@ async def _summarize_and_trim(conversation: list[dict]) -> list[dict]:
 
 def get_conversation(user_id: int) -> list[dict]:
     if user_id not in _conversations_loaded:
-        _conversations[user_id] = _load_conversation(user_id)
+        loaded = _load_conversation(user_id)
+        _conversations[user_id] = loaded
         _conversations_loaded.add(user_id)
+        if loaded:
+            _session_resumed.add(user_id)  # mark: this session was restored from disk
     return _conversations.setdefault(user_id, [])
 
 
@@ -1038,15 +1050,27 @@ Do NOT skip phases. Do NOT start coding before planning.
 - spawn_coding_agent works in the main workspace — agents can read/modify existing repo files directly
 """
 
-def build_system_prompt(project: Project | None) -> str:
+def build_system_prompt(project: Project | None, session_resumed: bool = False) -> str:
+    resumed_hint = ""
+    if session_resumed:
+        resumed_hint = (
+            "\n\n=== SESSION RESUMED ===\n"
+            "This is a RESUMED session. The conversation history below was loaded from "
+            "a previous session. Read it carefully to understand what was being discussed "
+            "before continuing. Do NOT ask the user to remind you — the context is in the "
+            "conversation history. Pick up where you left off.\n"
+            "=== END SESSION NOTE ===\n"
+        )
+
     if not project:
         return (
             ORCHESTRATOR_SYSTEM_BASE
             + "\n\nNo active project. Call create_new_project to set one up. "
             "Ask the user what they want to build, then call create_new_project with the details. "
             "You can still answer questions without an active project, but you need one to use coding/git tools."
+            + resumed_hint
         )
-    return ORCHESTRATOR_SYSTEM_BASE + "\n" + project.build_enhanced_context_prompt()
+    return ORCHESTRATOR_SYSTEM_BASE + "\n" + project.build_enhanced_context_prompt() + resumed_hint
 
 
 # ── Tool handler ──────────────────────────────────────────────────────────────
@@ -1212,14 +1236,30 @@ async def chat(
     conversation = get_conversation(user_id)
     conversation.append({"role": "user", "content": message})
 
+    # ── Project recovery: ensure we don't lose project context ──
+    if project is None:
+        project = get_active(user_id)  # retry from persistent storage
+    if project is None:
+        # Auto-select if there's exactly one project on disk
+        projects = list_projects()
+        if len(projects) == 1:
+            project = Project(projects[0]["slug"])
+            set_active(user_id, projects[0]["slug"])
+            log.info("Auto-selected sole project '%s' for user %s", projects[0]["slug"], user_id)
+
+    # ── Check if this is a resumed session (loaded from disk after restart) ──
+    is_resumed = user_id in _session_resumed
+    if is_resumed:
+        _session_resumed.discard(user_id)  # only show hint once
+
     # Summarize & trim conversation if it's getting too long
-    trimmed = await _summarize_and_trim(conversation)
+    trimmed = await _summarize_and_trim(conversation, project=project)
     if len(trimmed) != len(conversation):
         _conversations[user_id] = trimmed
         conversation = trimmed
         _save_conversation(user_id)  # persist the trimmed version
 
-    system = build_system_prompt(project)
+    system = build_system_prompt(project, session_resumed=is_resumed)
 
     while True:
         # Sanitize conversation to fix any orphaned tool_use messages

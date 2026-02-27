@@ -48,6 +48,16 @@ async def route(update: Update, user_id: int, message: str):
     """Send any message to the AI and stream status updates back."""
     project = get_active(user_id)
 
+    if project is None:
+        # Check if this user has conversation history (session may have restarted)
+        conv = engine.get_conversation(user_id)
+        if conv:
+            log.warning(
+                "User %s has %d conversation messages but get_active() returned None — "
+                "engine.chat() will attempt project recovery",
+                user_id, len(conv),
+            )
+
     await update.message.chat.send_action(ChatAction.TYPING)
 
     async def status_cb(text: str):
