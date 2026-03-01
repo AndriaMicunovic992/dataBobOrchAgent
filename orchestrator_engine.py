@@ -451,11 +451,14 @@ async def run_sdk_subagent(
 
 
 # ── Claude Code CLI subagent (Windows-safe, falls back to SDK) ───────────────
+_cc_cli_warned = False  # Only warn about missing Claude Code CLI once per session
+
 async def run_claude_code_subagent(
     task: str, working_dir: Path, label: str = "cc-agent",
     status_cb: Callable[[str], Awaitable[None]] | None = None,
     project: "Project | None" = None,
 ) -> str:
+    global _cc_cli_warned
     working_dir.mkdir(parents=True, exist_ok=True)
     if status_cb:
         await status_cb(f"🖥️ `[{label}]` Claude Code CLI running…")
@@ -464,11 +467,9 @@ async def run_claude_code_subagent(
 
     # If Claude Code isn't installed, fall back to SDK subagent automatically
     if "Claude Code CLI not found" in result:
-        if status_cb:
-            await status_cb(
-                "⚠️ Claude Code CLI not installed — falling back to SDK agent.\n"
-                "_(Install Node.js + `npm install -g @anthropic-ai/claude-code` for full shell access)_"
-            )
+        if status_cb and not _cc_cli_warned:
+            _cc_cli_warned = True
+            await status_cb("⚠️ Claude Code CLI not installed — using SDK agent instead.")
         return await run_sdk_subagent(
             task=task, workspace=working_dir,
             label=label, status_cb=status_cb, project=project,
@@ -820,7 +821,11 @@ def build_orchestrator_tools() -> list[dict]:
         },
         {
             "name": "spawn_claude_code_agent",
-            "description": "Dispatch to Claude Code CLI for complex multi-file work needing shell/test/install.",
+            "description": (
+                "Dispatch to Claude Code CLI for tasks needing shell, npm install, or test execution. "
+                "NOT for git operations — use git_init, git_pull, git_commit_push instead. "
+                "Falls back to SDK subagent if CLI is not installed."
+            ),
             "input_schema": {
                 "type": "object",
                 "properties": {
@@ -990,6 +995,21 @@ You manage a full-stack project with these agent specialisations:
   DATA      — DAX measures, SQL queries, semantic models
   TEST      — Unit tests, integration tests, test fixtures
   REVIEW    — Code review, integration check, conflict detection
+
+=== YOUR CAPABILITIES ===
+You run in a cloud container with FULL network and filesystem access.
+- Git operations (git_init, git_pull, git_commit_push, etc.) work in ALL environments
+  via a 3-tier fallback: gitpython → subprocess → GitHub REST API
+- Code changes are made through subagents (spawn_coding_agent, spawn_parallel_agents)
+- You CAN reach api.github.com (via GITHUB_TOKEN)
+- Do NOT use spawn_claude_code_agent for git tasks — use git_init/git_pull/git_commit_push directly
+
+If a git tool returns an error:
+  1. Call git_diagnose to understand what is broken
+  2. Report the SPECIFIC error to the user
+  3. NEVER say "I can't execute code" or "I can't make HTTP calls" — you CAN
+  4. NEVER generalize a single tool failure into a blanket inability statement
+=== END CAPABILITIES ===
 
 === MANDATORY WORKFLOW ===
 
@@ -1218,6 +1238,9 @@ async def handle_tool(
 
     elif name == "git_log":
         return await git_tools.git_log(ws, inputs.get("n", 5))
+
+    elif name == "git_diagnose":
+        return await git_tools.git_diagnose(ws)
 
     elif name == "log_decision":
         project.log_decision(inputs["title"], inputs["reasoning"])
